@@ -174,9 +174,9 @@ sub ::vprotd
 
 sub ::endbranch
 {
-    &::generic("%ifdef __CET__\n");
-    &::data_byte(0xf3,0x0f,0x1e,0xfb);
-    &::generic("%endif\n");
+# Modified by update-openssl.sh:
+    if ($::win32) { &::generic("%ifdef __CET__\n"); &::data_byte(0xf3,0x0f,0x1e,0xfb); &::generic("%endif\n"); }
+    else { &::generic("#ifdef __CET__\n"); &::data_byte(0xf3,0x0f,0x1e,0xfb); &::generic("#endif\n"); }
 }
 
 # label management
