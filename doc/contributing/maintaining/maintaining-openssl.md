@@ -80,11 +80,44 @@ cherry-picked to older release lines that still provide binaries on 32-bit Windo
 
 ```bash
 make -C deps/openssl/config clean
-# Edit deps/openssl/openssl/crypto/perlasm/x86asm.pl changing
-# #ifdef to %ifdef to make it compatible to nasm on 32-bit Windows.
-# See: https://github.com/nodejs/node/pull/43603#issuecomment-1170670844
-# Reference: https://github.com/openssl/openssl/issues/18459
 ```
+
+Edit `deps/openssl/openssl/crypto/perlasm/x86asm.pl` to use nasm-style ifdef, but
+only for win32. Replace the endbranch subroutine with this one:
+```perl
+sub ::endbranch
+{
+    if ($::win32)
+    {
+        &::generic("%ifdef __CET__\n");
+        &::data_byte(0xf3,0x0f,0x1e,0xfb);
+        &::generic("%endif\n");
+    }
+    else
+    {
+        &::generic("#ifdef __CET__\n");
+        &::data_byte(0xf3,0x0f,0x1e,0xfb);
+        &::generic("#endif\n");
+    }
+}
+```
+
+The openssl update script in `tools/dep_updaters` will do the same modification, but
+in a more compact way.
+
+After manually modifying the `x86asm.pl`, run:
+```bash
+make gen-openssl
+```
+
+Official build methods of OpenSSL use C preprocessor with #ifdef before using nasm
+for Windows, so this change would be unnecessary, but building the Node for 32-bit
+Windows is done in a different way.
+
+Related issues:
+* https://github.com/nodejs/node/pull/43603#issuecomment-1170670844
+* https://github.com/openssl/openssl/issues/18459
+* https://github.com/nodejs/node/issues/44822
 
 ## 3. Check diffs
 
