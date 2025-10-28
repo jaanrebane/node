@@ -70,10 +70,20 @@ regenerate() {
   echo "Regenerating platform-dependent files..."
 
   make -C "$DEPS_DIR/openssl/config" clean
-  # Needed for compatibility with nasm on 32-bit Windows
+
+  # These two sed commands were previously used to replace #ifdef with nasm-style %ifdef for win32
+  # sed -i 's/#ifdef/%ifdef/g' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
+  # sed -i 's/#endif/%endif/g' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
   # See https://github.com/nodejs/node/blob/main/doc/contributing/maintaining/maintaining-openssl.md#2-execute-make-in-depsopensslconfig-directory
-  sed -i 's/#ifdef/%ifdef/g' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
-  sed -i 's/#endif/%endif/g' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
+
+  # The following perl command is a replacement for the sed commands to modify x86asm.pl.
+  # It replaces x86asm.pl endbranch subroutine with an if-else statement to use %ifdef for win32
+  # and #ifdef for others.
+  # See https://github.com/nodejs/node/issues/44822
+  echo "Modifying x86asm.pl to use nasm-style ifdef syntax only for win32."
+  perl -0777 -i -pe 's/sub ::endbranch\s*{.*?\n}/sub ::endbranch\n{\n# Modified by update-openssl.sh:\n    if (\$::win32) { \&::generic(\"%ifdef __CET__\\n\"); \&::data_byte(0xf3,0x0f,0x1e,0xfb); \&::generic(\"%endif\\n\"); }\n    else { \&::generic(\"#ifdef __CET__\\n\"); \&::data_byte(0xf3,0x0f,0x1e,0xfb); \&::generic(\"#endif\\n\"); }\n}/s' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
+  # -0777 is needed for multi-line replacement (replacing the entire "endbranch" subroutine).
+
   make -C "$BASE_DIR" gen-openssl
 
   echo "All done!"
