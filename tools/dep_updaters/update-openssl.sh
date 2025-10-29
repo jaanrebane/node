@@ -70,10 +70,26 @@ regenerate() {
   echo "Regenerating platform-dependent files..."
 
   make -C "$DEPS_DIR/openssl/config" clean
-  # Needed for compatibility with nasm on 32-bit Windows
-  # See https://github.com/nodejs/node/blob/main/doc/contributing/maintaining/maintaining-openssl.md#2-execute-make-in-depsopensslconfig-directory
-  sed -i 's/#ifdef/%ifdef/g' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
-  sed -i 's/#endif/%endif/g' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
+
+  # There is an issue with #ifdef and #endif in assembler files when doing win32 builds.
+  # More information:
+  # * https://github.com/openssl/openssl/issues/18459
+  # * https://github.com/nodejs/node/pull/43603#issuecomment-1170670844
+  # * https://github.com/nodejs/node/issues/44822
+
+  # Instead of replacing #ifdef and #endif with %ifdef and %endif, replace them with perl variables.
+  # Including the brackets and double quotes enables this to be run even after the perl command that follows.
+  sed -i 's/("#ifdef/("\$ifdef/g' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
+  sed -i 's/("#endif/("\$endif/g' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
+
+  # The perl command needs to run after the sed commands. It initializes the ifdef and endif variables
+  # and places and if statement to use %ifdef and %endif only when it is building assembler files for win32.
+  perl -0777 -i -pe 's/sub ::endbranch\n\{/sub ::endbranch    # modified by node update openssl script\n\{\n    my \$ifdef = "#ifdef";\n    my \$endif = "#endif";\n    if (\$::win32) \{ \$ifdef="%ifdef"; \$endif="%endif"; \}\n/s' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
+  #    -0777 is needed for multi-line input replacement (sed can't be used)
+
+  # It's also possible to replace the entire endbranch subroutine whether or not it was modified:
+  # perl -0777 -i -pe 's/sub ::endbranch.*?\n\}/sub ::endbranch\n{\n# modified by node update openssl script\n    if (\$::win32) { &::generic(\"%ifdef __CET__\\n\"); &::data_byte(0xf3,0x0f,0x1e,0xfb); &::generic(\"%endif\\n\"); }\n    else { \&::generic(\"#ifdef __CET__\\n\"); \&::data_byte(0xf3,0x0f,0x1e,0xfb); \&::generic(\"#endif\\n\"); }\n}/s' "$DEPS_DIR/openssl/openssl/crypto/perlasm/x86asm.pl"
+
   make -C "$BASE_DIR" gen-openssl
 
   echo "All done!"
